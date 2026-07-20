@@ -328,16 +328,165 @@ class Reservation {
     }
 }
 
-class PaymentResult {
+// =====================================================================
+// PAYMENT SIMULATION
+// =====================================================================
 
+class PaymentResult {
+    private final boolean success;
+    private final String transactionId;
+    private final String message;
+
+    public PaymentResult(boolean success, String transactionId, String message) {
+        this.success = success;
+        this.transactionId = transactionId;
+        this.message = message;
+    }
+
+    public boolean isSuccess() {
+        return success;
+    }
+
+    public String getTransactionId() {
+        return transactionId;
+    }
+
+    public String getMessage() {
+        return message;
+    }
 }
 
+// Simulates a payment gateway - no real money or network calls involved.
 class PaymentSimulator {
 
+    private static final Random RANDOM = new Random();
+
+    public PaymentResult processPayment(double amount, String method) {
+        System.out.println("\nConnecting to payment gateway...");
+        simulateDelay();
+        System.out.println("Processing " + method + " payment of Rs." + String.format("%.2f", amount) + " ...");
+        simulateDelay();
+
+        boolean success = RANDOM.nextInt(100) < 95; // 95% success rate
+
+        if (success) {
+            String txnId = "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+            System.out.println("Payment successful! Transaction ID: " + txnId);
+            return new PaymentResult(true, txnId, "Payment approved");
+        } else {
+            System.out.println("Payment declined by gateway. Please try again.");
+            return new PaymentResult(false, null, "Payment declined");
+        }
+    }
+
+    private void simulateDelay() {
+        try {
+            Thread.sleep(300);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 }
 
+// =====================================================================
+// FILE I/O STORAGE
+// =====================================================================
+
+// Handles all reading/writing of Room and Reservation data to disk.
 class FileStorageManager {
 
+    private final String roomsFilePath;
+    private final String reservationsFilePath;
+
+    public FileStorageManager(String dataDirectory) {
+        File dir = new File(dataDirectory);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        this.roomsFilePath = dataDirectory + File.separator + "rooms.txt";
+        this.reservationsFilePath = dataDirectory + File.separator + "reservations.txt";
+    }
+
+    public List<Room> loadRooms() {
+        List<Room> rooms = new ArrayList<>();
+        File file = new File(roomsFilePath);
+
+        if (!file.exists()) {
+            rooms = seedDefaultRooms();
+            saveRooms(rooms);
+            return rooms;
+        }
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!line.trim().isEmpty()) {
+                    rooms.add(Room.fromFileLine(line));
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("Error reading rooms file: " + e.getMessage());
+        }
+        return rooms;
+    }
+
+    public void saveRooms(List<Room> rooms) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(roomsFilePath))) {
+            for (Room room : rooms) {
+                writer.write(room.toFileLine());
+                writer.newLine();
+            }
+        } catch (IOException e) {
+            System.out.println("Error saving rooms file: " + e.getMessage());
+        }
+    }
+
+    private List<Room> seedDefaultRooms() {
+        List<Room> rooms = new ArrayList<>();
+        int roomNumber = 101;
+        for (int i = 0; i < 4; i++) {
+            rooms.add(new Room(roomNumber++, RoomCategory.STANDARD, RoomCategory.STANDARD.getBasePrice(), true));
+        }
+        for (int i = 0; i < 3; i++) {
+            rooms.add(new Room(roomNumber++, RoomCategory.DELUXE, RoomCategory.DELUXE.getBasePrice(), true));
+        }
+        for (int i = 0; i < 2; i++) {
+            rooms.add(new Room(roomNumber++, RoomCategory.SUITE, RoomCategory.SUITE.getBasePrice(), true));
+        }
+        return rooms;
+    }
+
+    public List<Reservation> loadReservations() {
+        List<Reservation> reservations = new ArrayList<>();
+        File file = new File(reservationsFilePath);
+
+        if (!file.exists()) {
+            return reservations;
+        }
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!line.trim().isEmpty()) {
+                    reservations.add(Reservation.fromFileLine(line));
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("Error reading reservations file: " + e.getMessage());
+        }
+        return reservations;
+    }
+
+    public void saveReservations(List<Reservation> reservations) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(reservationsFilePath))) {
+            for (Reservation r : reservations) {
+                writer.write(r.toFileLine());
+                writer.newLine();
+            }
+        } catch (IOException e) {
+            System.out.println("Error saving reservations file: " + e.getMessage());
+        }
+    }
 }
 
 // =====================================================================
