@@ -112,12 +112,10 @@ public class CodeAlpha_HotelReservationSystem {
         String phone = scanner.nextLine().trim();
 
         LocalDate checkIn = readDate("Enter check-in date (yyyy-MM-dd): ");
-        if (checkIn == null)
-            return;
+        if (checkIn == null) return;
 
         LocalDate checkOut = readDate("Enter check-out date (yyyy-MM-dd): ");
-        if (checkOut == null)
-            return;
+        if (checkOut == null) return;
 
         System.out.print("Enter payment method (CARD / UPI / CASH): ");
         String paymentMethod = scanner.nextLine().trim();
@@ -177,6 +175,23 @@ public class CodeAlpha_HotelReservationSystem {
 
 // Categories of room offered, each with a default base price/night.
 enum RoomCategory {
+    STANDARD(2000.0),
+    DELUXE(3500.0),
+    SUITE(6000.0);
+
+    private final double basePrice;
+
+    RoomCategory(double basePrice) {
+        this.basePrice = basePrice;
+    }
+
+    public double getBasePrice() {
+        return basePrice;
+    }
+
+    public static RoomCategory fromString(String value) {
+        return RoomCategory.valueOf(value.trim().toUpperCase());
+    }
 }
 
 enum ReservationStatus {
@@ -186,11 +201,131 @@ enum ReservationStatus {
 
 // A single hotel room; knows how to serialize/deserialize itself for File I/O.
 class Room {
+    private int roomNumber;
+    private RoomCategory category;
+    private double pricePerNight;
+    private boolean available;
 
+    public Room(int roomNumber, RoomCategory category, double pricePerNight, boolean available) {
+        this.roomNumber = roomNumber;
+        this.category = category;
+        this.pricePerNight = pricePerNight;
+        this.available = available;
+    }
+
+    public int getRoomNumber() {
+        return roomNumber;
+    }
+
+    public RoomCategory getCategory() {
+        return category;
+    }
+
+    public double getPricePerNight() {
+        return pricePerNight;
+    }
+
+    public boolean isAvailable() {
+        return available;
+    }
+
+    public void setAvailable(boolean available) {
+        this.available = available;
+    }
+
+    public String toFileLine() {
+        return roomNumber + "|" + category + "|" + pricePerNight + "|" + available;
+    }
+
+    public static Room fromFileLine(String line) {
+        String[] parts = line.split("\\|");
+        int roomNumber = Integer.parseInt(parts[0].trim());
+        RoomCategory category = RoomCategory.fromString(parts[1]);
+        double price = Double.parseDouble(parts[2].trim());
+        boolean available = Boolean.parseBoolean(parts[3].trim());
+        return new Room(roomNumber, category, price, available);
+    }
+
+    @Override
+    public String toString() {
+        return String.format("Room #%-4d | %-8s | Rs.%-8.2f/night | %s",
+                roomNumber, category, pricePerNight, available ? "AVAILABLE" : "BOOKED");
+    }
 }
 
+// A booking made against a Room by a guest; also self-serializing for File I/O.
 class Reservation {
+    private String reservationId;
+    private int roomNumber;
+    private String guestName;
+    private String guestPhone;
+    private LocalDate checkIn;
+    private LocalDate checkOut;
+    private double totalAmount;
+    private ReservationStatus status;
+    private String transactionId;
 
+    public Reservation(String reservationId, int roomNumber, String guestName, String guestPhone,
+            LocalDate checkIn, LocalDate checkOut, double totalAmount,
+            ReservationStatus status, String transactionId) {
+        this.reservationId = reservationId;
+        this.roomNumber = roomNumber;
+        this.guestName = guestName;
+        this.guestPhone = guestPhone;
+        this.checkIn = checkIn;
+        this.checkOut = checkOut;
+        this.totalAmount = totalAmount;
+        this.status = status;
+        this.transactionId = transactionId;
+    }
+
+    public String getReservationId() {
+        return reservationId;
+    }
+
+    public int getRoomNumber() {
+        return roomNumber;
+    }
+
+    public ReservationStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(ReservationStatus status) {
+        this.status = status;
+    }
+
+    public long getNights() {
+        return ChronoUnit.DAYS.between(checkIn, checkOut);
+    }
+
+    public String toFileLine() {
+        return reservationId + "|" + roomNumber + "|" + guestName + "|" + guestPhone + "|" +
+                checkIn + "|" + checkOut + "|" + totalAmount + "|" + status + "|" + transactionId;
+    }
+
+    public static Reservation fromFileLine(String line) {
+        String[] p = line.split("\\|", -1);
+        return new Reservation(
+                p[0],
+                Integer.parseInt(p[1]),
+                p[2],
+                p[3],
+                LocalDate.parse(p[4]),
+                LocalDate.parse(p[5]),
+                Double.parseDouble(p[6]),
+                ReservationStatus.valueOf(p[7]),
+                p[8]
+        );
+    }
+
+    @Override
+    public String toString() {
+        return String.format(
+                "ID: %s | Room #%d | Guest: %s (%s) | %s -> %s (%d nights) | Total: Rs.%.2f | Status: %s | Txn: %s",
+                reservationId, roomNumber, guestName, guestPhone, checkIn, checkOut,
+                getNights(), totalAmount, status, transactionId);
+    }
 }
 
 class PaymentResult {
