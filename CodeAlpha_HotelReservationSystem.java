@@ -493,6 +493,129 @@ class FileStorageManager {
 // BUSINESS LOGIC
 // =====================================================================
 
+// Core business logic: search, book, cancel, view - ties everything together.
 class HotelService {
 
+    private final FileStorageManager storageManager;
+    private final PaymentSimulator paymentSimulator;
+
+    private List<Room> rooms;
+    private List<Reservation> reservations;
+
+    public HotelService(FileStorageManager storageManager) {
+        this.storageManager = storageManager;
+        this.paymentSimulator = new PaymentSimulator();
+        this.rooms = storageManager.loadRooms();
+        this.reservations = storageManager.loadReservations();
+    }
+
+    public List<Room> searchAvailableRooms() {
+        List<Room> available = new ArrayList<>();
+        for (Room r : rooms) {
+            if (r.isAvailable()) {
+                available.add(r);
+            }
+        }
+        return available;
+    }
+
+    public List<Room> searchAvailableRoomsByCategory(RoomCategory category) {
+        List<Room> available = new ArrayList<>();
+        for (Room r : rooms) {
+            if (r.isAvailable() && r.getCategory() == category) {
+                available.add(r);
+            }
+        }
+        return available;
+    }
+
+    private Optional<Room> findRoomByNumber(int roomNumber) {
+        return rooms.stream().filter(r -> r.getRoomNumber() == roomNumber).findFirst();
+    }
+
+    public static class BookingResult {
+        public final boolean success;
+        public final String message;
+        public final Reservation reservation;
+
+        BookingResult(boolean success, String message, Reservation reservation) {
+            this.success = success;
+            this.message = message;
+            this.reservation = reservation;
+        }
+    }
+
+    public BookingResult bookRoom(int roomNumber, String guestName, String guestPhone,
+            LocalDate checkIn, LocalDate checkOut, String paymentMethod) {
+
+        Optional<Room> roomOpt = findRoomByNumber(roomNumber);
+        if (roomOpt.isEmpty()) {
+            return new BookingResult(false, "No room found with number " + roomNumber, null);
+        }
+
+        Room room = roomOpt.get();
+        if (!room.isAvailable()) {
+            return new BookingResult(false, "Room #" + roomNumber + " is currently not available.", null);
+        }
+
+        if (checkIn == null || checkOut == null || !checkOut.isAfter(checkIn)) {
+            return new BookingResult(false, "Check-out date must be after check-in date.", null);
+        }
+
+        long nights = ChronoUnit.DAYS.between(checkIn, checkOut);
+        double totalAmount = nights * room.getPricePerNight();
+
+        PaymentResult paymentResult = paymentSimulator.processPayment(totalAmount, paymentMethod);
+        if (!paymentResult.isSuccess()) {
+            return new BookingResult(false, "Booking failed: " + paymentResult.getMessage(), null);
+        }
+
+        String reservationId = "RES-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        Reservation reservation = new Reservation(
+                reservationId, roomNumber, guestName, guestPhone,
+                checkIn, checkOut, totalAmount, ReservationStatus.CONFIRMED,
+                paymentResult.getTransactionId());
+
+        room.setAvailable(false);
+        reservations.add(reservation);
+
+        storageManager.saveRooms(rooms);
+        storageManager.saveReservations(reservations);
+
+        return new BookingResult(true, "Room booked successfully!", reservation);
+    }
+
+    public String cancelReservation(String reservationId) {
+        Optional<Reservation> resOpt = reservations.stream()
+                .filter(r -> r.getReservationId().equalsIgnoreCase(reservationId))
+                .findFirst();
+
+        if (resOpt.isEmpty()) {
+            return "No reservation found with ID " + reservationId;
+        }
+
+        Reservation reservation = resOpt.get();
+        if (reservation.getStatus() == ReservationStatus.CANCELLED) {
+            return "Reservation " + reservationId + " is already cancelled.";
+        }
+
+        reservation.setStatus(ReservationStatus.CANCELLED);
+        findRoomByNumber(reservation.getRoomNumber()).ifPresent(room -> room.setAvailable(true));
+
+        storageManager.saveRooms(rooms);
+        storageManager.saveReservations(reservations);
+
+        return "Reservation " + reservationId + " has been cancelled. Room #" +
+                reservation.getRoomNumber() + " is now available again.";
+    }
+
+    public Optional<Reservation> viewReservation(String reservationId) {
+        return reservations.stream()
+                .filter(r -> r.getReservationId().equalsIgnoreCase(reservationId))
+                .findFirst();
+    }
+
+    public List<Reservation> getAllReservations() {
+        return reservations;
+    }
 }
